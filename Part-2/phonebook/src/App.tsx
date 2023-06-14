@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import api from './Api';
 
 interface Person {
   name: string;
@@ -6,10 +7,10 @@ interface Person {
   id: number;
 }
 
-const Filter: React.FC<{ searchName: string; handleSearchChange: (event: React.ChangeEvent<HTMLInputElement>) => void }> = ({
-  searchName,
-  handleSearchChange,
-}) => {
+const Filter: React.FC<{
+  searchName: string;
+  handleSearchChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
+}> = ({ searchName, handleSearchChange }) => {
   return (
     <div>
       Search by name: <input type="text" value={searchName} onChange={handleSearchChange} />
@@ -23,13 +24,7 @@ const PersonForm: React.FC<{
   handleNameChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
   handleNumberChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
   addPerson: (event: React.FormEvent<HTMLFormElement>) => void;
-}> = ({
-  newName,
-  newNumber,
-  handleNameChange,
-  handleNumberChange,
-  addPerson,
-}) => {
+}> = ({ newName, newNumber, handleNameChange, handleNumberChange, addPerson }) => {
   return (
     <form onSubmit={addPerson}>
       <div>
@@ -45,28 +40,31 @@ const PersonForm: React.FC<{
   );
 };
 
-const Persons: React.FC<{ persons: Person[] }> = ({ persons }) => {
+const Persons: React.FC<{ persons: Person[]; onDelete: (id: number) => void }> = ({ persons, onDelete }) => {
   return (
     <ul>
       {persons.map((person) => (
         <li key={person.id}>
           {person.name} - {person.number}
+          <button onClick={() => onDelete(person.id)}>Delete</button>
         </li>
       ))}
     </ul>
   );
 };
 
+
 const App: React.FC = () => {
-  const [persons, setPersons] = useState<Person[]>([
-    { name: 'Arto Hellas', number: '040-123456', id: 1 },
-    { name: 'Ada Lovelace', number: '39-44-5323523', id: 2 },
-    { name: 'Dan Abramov', number: '12-43-234345', id: 3 },
-    { name: 'Mary Poppendieck', number: '39-23-6423122', id: 4 },
-  ]);
+  const [persons, setPersons] = useState<Person[]>([]);
   const [newName, setNewName] = useState('');
   const [newNumber, setNewNumber] = useState('');
   const [searchName, setSearchName] = useState('');
+
+  useEffect(() => {
+    api.getAllPersons().then((data) => {
+      setPersons(data);
+    });
+  }, []);
 
   const handleNameChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setNewName(event.target.value);
@@ -82,27 +80,49 @@ const App: React.FC = () => {
 
   const addPerson = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-
+  
     if (newName.trim() === '' || newNumber.trim() === '') {
       return;
     }
-
-    const isNameDuplicate = persons.some((person) => person.name === newName);
-
-    if (isNameDuplicate) {
-      alert(`${newName} is already added to the phonebook!`);
-      return;
+  
+    const existingPerson = persons.find((person) => person.name === newName);
+  
+    if (existingPerson) {
+      const confirmUpdate = window.confirm(`${newName} is already added to the phonebook. Do you want to update the phone number?`);
+      if (confirmUpdate) {
+        const updatedPerson: Person = {
+          ...existingPerson,
+          number: newNumber,
+        };
+  
+        api.updatePerson(existingPerson.id, updatedPerson).then((data) => {
+          setPersons(persons.map((person) => (person.id === data.id ? data : person)));
+          setNewName('');
+          setNewNumber('');
+        });
+      }
+    } else {
+      const newPerson: Person = {
+        name: newName,
+        number: newNumber,
+        id: persons.length + 1,
+      };
+  
+      api.addPerson(newPerson).then((data) => {
+        setPersons([...persons, data]);
+        setNewName('');
+        setNewNumber('');
+      });
     }
+  };  
 
-    const newPerson: Person = {
-      name: newName,
-      number: newNumber,
-      id: persons.length + 1,
-    };
-
-    setPersons([...persons, newPerson]);
-    setNewName('');
-    setNewNumber('');
+  const handleDelete = (id: number) => {
+    const confirmDeletion = window.confirm('Are you sure you want to delete this person?');
+    if (confirmDeletion) {
+      api.deletePerson(id).then(() => {
+        setPersons(persons.filter((person) => person.id !== id));
+      });
+    }
   };
 
   const filteredPersons = persons.filter((person) =>
@@ -127,9 +147,10 @@ const App: React.FC = () => {
 
       <h3>Numbers</h3>
 
-      <Persons persons={filteredPersons} />
+      <Persons persons={filteredPersons} onDelete={handleDelete} />
     </div>
   );
 };
+
 
 export default App;
