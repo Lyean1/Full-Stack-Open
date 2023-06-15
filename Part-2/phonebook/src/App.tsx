@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 import api from './Api';
 
 interface Person {
@@ -6,6 +7,10 @@ interface Person {
   number: string;
   id: number;
 }
+
+const Notification: React.FC<{ message: string }> = ({ message }) => {
+  return <div className="notification">{message}</div>;
+};
 
 const Filter: React.FC<{
   searchName: string;
@@ -53,16 +58,16 @@ const Persons: React.FC<{ persons: Person[]; onDelete: (id: number) => void }> =
   );
 };
 
-
 const App: React.FC = () => {
   const [persons, setPersons] = useState<Person[]>([]);
   const [newName, setNewName] = useState('');
   const [newNumber, setNewNumber] = useState('');
   const [searchName, setSearchName] = useState('');
+  const [notification, setNotification] = useState('');
 
   useEffect(() => {
-    api.getAllPersons().then((data) => {
-      setPersons(data);
+    axios.get<Person[]>('http://localhost:3001/persons').then((response) => {
+      setPersons(response.data);
     });
   }, []);
 
@@ -80,13 +85,13 @@ const App: React.FC = () => {
 
   const addPerson = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-  
+
     if (newName.trim() === '' || newNumber.trim() === '') {
       return;
     }
-  
+
     const existingPerson = persons.find((person) => person.name === newName);
-  
+
     if (existingPerson) {
       const confirmUpdate = window.confirm(`${newName} is already added to the phonebook. Do you want to update the phone number?`);
       if (confirmUpdate) {
@@ -94,12 +99,17 @@ const App: React.FC = () => {
           ...existingPerson,
           number: newNumber,
         };
-  
-        api.updatePerson(existingPerson.id, updatedPerson).then((data) => {
-          setPersons(persons.map((person) => (person.id === data.id ? data : person)));
-          setNewName('');
-          setNewNumber('');
-        });
+
+        api.updatePerson(existingPerson.id, updatedPerson)
+          .then((data) => {
+            setPersons(persons.map((person) => (person.id === data.id ? data : person)));
+            setNewName('');
+            setNewNumber('');
+            showNotification(`Phone number updated for ${data.name}`);
+          })
+          .catch((error) => {
+            console.log(error);
+          });
       }
     } else {
       const newPerson: Person = {
@@ -107,22 +117,39 @@ const App: React.FC = () => {
         number: newNumber,
         id: persons.length + 1,
       };
-  
-      api.addPerson(newPerson).then((data) => {
-        setPersons([...persons, data]);
-        setNewName('');
-        setNewNumber('');
-      });
-    }
-  };  
 
-  const handleDelete = (id: number) => {
+      api.addPerson(newPerson)
+        .then((data) => {
+          setPersons([...persons, data]);
+          setNewName('');
+          setNewNumber('');
+          showNotification(`Person ${data.name} added`);
+        })
+        .catch((error) => {
+          console.log(error);
+        });
+    }
+  };
+
+  const deletePerson = (id: number) => {
     const confirmDeletion = window.confirm('Are you sure you want to delete this person?');
     if (confirmDeletion) {
-      api.deletePerson(id).then(() => {
-        setPersons(persons.filter((person) => person.id !== id));
-      });
+      api.deletePerson(id)
+        .then(() => {
+          setPersons(persons.filter((person) => person.id !== id));
+          showNotification('Person deleted');
+        })
+        .catch((error) => {
+          console.log(error);
+        });
     }
+  };
+
+  const showNotification = (message: string) => {
+    setNotification(message);
+    setTimeout(() => {
+      setNotification('');
+    }, 3000); 
   };
 
   const filteredPersons = persons.filter((person) =>
@@ -132,6 +159,12 @@ const App: React.FC = () => {
   return (
     <div>
       <h2>Phonebook</h2>
+
+      {notification && (
+        <div style={{ backgroundColor: 'green', padding: '10px', marginBottom: '10px' }}>
+          <Notification message={notification} />
+        </div>
+      )}
 
       <Filter searchName={searchName} handleSearchChange={handleSearchChange} />
 
@@ -147,10 +180,10 @@ const App: React.FC = () => {
 
       <h3>Numbers</h3>
 
-      <Persons persons={filteredPersons} onDelete={handleDelete} />
+      <Persons persons={filteredPersons} onDelete={deletePerson} />
+
     </div>
   );
 };
-
 
 export default App;
